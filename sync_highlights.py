@@ -194,6 +194,14 @@ def save_state(state: dict):
 
 # === DEVONTHINK INTEGRATION ===
 
+def escape_applescript_string(s: str) -> str:
+    """Escape a string for use in AppleScript."""
+    # Replace backslashes first, then quotes
+    s = s.replace('\\', '\\\\')
+    s = s.replace('"', '\\"')
+    return s
+
+
 def import_to_devonthink(name: str, content: str) -> bool:
     """Import a Markdown document into DEVONthink."""
 
@@ -202,12 +210,16 @@ def import_to_devonthink(name: str, content: str) -> bool:
         f.write(content)
         temp_path = f.name
 
+    # Escape the name for AppleScript
+    safe_name = escape_applescript_string(name)
+    safe_group = escape_applescript_string(DEVONTHINK_GROUP)
+
     # AppleScript to import into DEVONthink
     script = f'''
     tell application "DEVONthink 3"
         -- Find or create the Kindle Highlights group in the inbox
         set theDatabase to inbox
-        set groupName to "{DEVONTHINK_GROUP}"
+        set groupName to "{safe_group}"
 
         -- Look for existing group
         set theGroup to missing value
@@ -221,7 +233,7 @@ def import_to_devonthink(name: str, content: str) -> bool:
         end if
 
         -- Check if document already exists
-        set docName to "{name}"
+        set docName to "{safe_name}"
         set existingDoc to missing value
         try
             set existingDoc to (first record of theGroup whose name is docName)
