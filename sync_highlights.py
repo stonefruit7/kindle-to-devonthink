@@ -13,8 +13,6 @@ import re
 import hashlib
 import json
 import logging
-import subprocess
-import tempfile
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -194,79 +192,18 @@ def save_state(state: dict):
 
 # === DEVONTHINK INTEGRATION ===
 
-def import_to_devonthink(name: str, content: str) -> bool:
-    """Import a Markdown document into DEVONthink."""
+def import_to_devonthink(name: str, content: str, output_dir: Path) -> bool:
+    """Write a Markdown document to the output folder for DEVONthink to index."""
 
-    # Write content to a temp file with the desired name
-    temp_dir = tempfile.mkdtemp()
-    # Use a safe filename for the temp file
+    output_dir.mkdir(parents=True, exist_ok=True)
     safe_filename = re.sub(r'[<>:"/\\|?*]', '', name) + '.md'
-    temp_path = Path(temp_dir) / safe_filename
-    temp_path.write_text(content, encoding='utf-8')
-
-    # Write AppleScript to a temp file to avoid shell escaping issues
-    script = '''
-on run argv
-    set filePath to item 1 of argv
-    set groupName to item 2 of argv
-
-    tell application "DEVONthink 3"
-        set theDatabase to incoming group
-
-        -- Look for existing group
-        set theGroup to missing value
-        try
-            set theGroup to (first record of theDatabase whose name is groupName and type is group)
-        end try
-
-        -- Create group if it doesn't exist
-        if theGroup is missing value then
-            set theGroup to create record with {name:groupName, type:group} in theDatabase
-        end if
-
-        -- Import the file using 'import' command
-        tell theGroup
-            set importedRecord to import filePath
-        end tell
-
-        return true
-    end tell
-end run
-'''
-
-    script_path = Path(temp_dir) / "import_script.scpt"
-    script_path.write_text(script, encoding='utf-8')
+    filepath = output_dir / safe_filename
 
     try:
-        result = subprocess.run(
-            ['osascript', str(script_path), str(temp_path), DEVONTHINK_GROUP],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-
-        # Clean up temp files and directory
-        temp_path.unlink(missing_ok=True)
-        script_path.unlink(missing_ok=True)
-        Path(temp_dir).rmdir()
-
-        if result.returncode != 0:
-            logging.error(f"AppleScript error: {result.stderr}")
-            return False
-
+        filepath.write_text(content, encoding='utf-8')
         return True
-
-    except subprocess.TimeoutExpired:
-        logging.error("DEVONthink import timed out")
-        temp_path.unlink(missing_ok=True)
-        script_path.unlink(missing_ok=True)
-        Path(temp_dir).rmdir()
-        return False
     except Exception as e:
-        logging.error(f"Error importing to DEVONthink: {e}")
-        temp_path.unlink(missing_ok=True)
-        script_path.unlink(missing_ok=True)
-        Path(temp_dir).rmdir()
+        logging.error(f"Error writing file: {e}")
         return False
 
 
@@ -311,8 +248,8 @@ def generate_markdown(book: Book, existing_ids: set) -> tuple[str, list[str]]:
     return '\n'.join(lines), new_ids
 
 
-def process_book(book: Book, state: dict) -> int:
-    """Generate markdown and import into DEVONthink."""
+def process_book(book: Book, state: dict, output_dir: Path) -> int:
+    """Generate markdown and write to output folder."""
     existing_ids = set(state.get("imported_ids", []))
 
     markdown, new_ids = generate_markdown(book, existing_ids)
@@ -321,12 +258,12 @@ def process_book(book: Book, state: dict) -> int:
         logging.info(f"No new highlights for: {book.title}")
         return 0
 
-    if import_to_devonthink(book.safe_filename, markdown):
+    if import_to_devonthink(book.safe_filename, markdown, output_dir):
         state["imported_ids"].extend(new_ids)
-        logging.info(f"Imported: {book.safe_filename} (+{len(new_ids)} highlights)")
+        logging.info(f"Saved: {book.safe_filename} (+{len(new_ids)} highlights)")
         return len(new_ids)
     else:
-        logging.error(f"Failed to import: {book.safe_filename}")
+        logging.error(f"Failed to save: {book.safe_filename}")
         return 0
 
 
@@ -373,12 +310,14 @@ def main():
     books = parse_clippings(clippings_path)
     logging.info(f"Found {len(books)} books with highlights")
 
+    output_dir = Path.home() / "Documents" / "Kindle Highlights"
+
     total_new = 0
     for book in books.values():
-        total_new += process_book(book, state)
+        total_new += process_book(book, state, output_dir)
 
     save_state(state)
-    logging.info(f"Sync complete: {total_new} new highlights imported to DEVONthink")
+    logging.info(f"Sync complete: {total_new} new highlights saved to {output_dir}")
     logging.info("=" * 50)
 
     return 0
