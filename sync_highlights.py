@@ -194,74 +194,56 @@ def save_state(state: dict):
 
 # === DEVONTHINK INTEGRATION ===
 
-def escape_applescript_string(s: str) -> str:
-    """Escape a string for use in AppleScript."""
-    # Replace backslashes first, then quotes
-    s = s.replace('\\', '\\\\')
-    s = s.replace('"', '\\"')
-    return s
-
-
 def import_to_devonthink(name: str, content: str) -> bool:
     """Import a Markdown document into DEVONthink."""
 
-    # Write content to a temp file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
-        f.write(content)
-        temp_path = f.name
-
-    # Escape the name for AppleScript
-    safe_name = escape_applescript_string(name)
-    safe_group = escape_applescript_string(DEVONTHINK_GROUP)
+    # Write content to a temp file with the desired name
+    temp_dir = tempfile.mkdtemp()
+    # Use a safe filename for the temp file
+    safe_filename = re.sub(r'[<>:"/\\|?*]', '', name) + '.md'
+    temp_path = Path(temp_dir) / safe_filename
+    temp_path.write_text(content, encoding='utf-8')
 
     # AppleScript to import into DEVONthink
-    script = f'''
-    tell application "DEVONthink 3"
-        -- Find or create the Kindle Highlights group in the inbox
-        set theDatabase to inbox
-        set groupName to "{safe_group}"
+    # We pass the path and group name as arguments to avoid escaping issues
+    script = '''
+    on run argv
+        set filePath to item 1 of argv
+        set groupName to item 2 of argv
 
-        -- Look for existing group
-        set theGroup to missing value
-        try
-            set theGroup to (first record of theDatabase whose name is groupName and type is group)
-        end try
+        tell application "DEVONthink 3"
+            set theDatabase to inbox
 
-        -- Create group if it doesn't exist
-        if theGroup is missing value then
-            set theGroup to create record with {{name:groupName, type:group}} in theDatabase
-        end if
+            -- Look for existing group
+            set theGroup to missing value
+            try
+                set theGroup to (first record of theDatabase whose name is groupName and type is group)
+            end try
 
-        -- Check if document already exists
-        set docName to "{safe_name}"
-        set existingDoc to missing value
-        try
-            set existingDoc to (first record of theGroup whose name is docName)
-        end try
+            -- Create group if it doesn't exist
+            if theGroup is missing value then
+                set theGroup to create record with {name:groupName, type:group} in theDatabase
+            end if
 
-        -- Import the file
-        set importedDoc to import POSIX file "{temp_path}" to theGroup
-        set name of importedDoc to docName
+            -- Import the file (DEVONthink will use the filename as the document name)
+            set importedDoc to import POSIX file filePath to theGroup
 
-        -- Delete old version if it existed
-        if existingDoc is not missing value then
-            delete record existingDoc
-        end if
-
-        return true
-    end tell
+            return true
+        end tell
+    end run
     '''
 
     try:
         result = subprocess.run(
-            ['osascript', '-e', script],
+            ['osascript', '-e', script, str(temp_path), DEVONTHINK_GROUP],
             capture_output=True,
             text=True,
             timeout=30
         )
 
-        # Clean up temp file
-        Path(temp_path).unlink(missing_ok=True)
+        # Clean up temp file and directory
+        temp_path.unlink(missing_ok=True)
+        Path(temp_dir).rmdir()
 
         if result.returncode != 0:
             logging.error(f"AppleScript error: {result.stderr}")
@@ -271,11 +253,13 @@ def import_to_devonthink(name: str, content: str) -> bool:
 
     except subprocess.TimeoutExpired:
         logging.error("DEVONthink import timed out")
-        Path(temp_path).unlink(missing_ok=True)
+        temp_path.unlink(missing_ok=True)
+        Path(temp_dir).rmdir()
         return False
     except Exception as e:
         logging.error(f"Error importing to DEVONthink: {e}")
-        Path(temp_path).unlink(missing_ok=True)
+        temp_path.unlink(missing_ok=True)
+        Path(temp_dir).rmdir()
         return False
 
 
