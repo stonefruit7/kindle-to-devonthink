@@ -20,7 +20,7 @@ No subscriptions, no cloud services, no Amazon login required.
 ## Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/kindle-to-devonthink.git
+git clone https://github.com/Claraemg/kindle-to-devonthink.git
 cd kindle-to-devonthink
 ./install.sh
 ```
