@@ -204,45 +204,50 @@ def import_to_devonthink(name: str, content: str) -> bool:
     temp_path = Path(temp_dir) / safe_filename
     temp_path.write_text(content, encoding='utf-8')
 
-    # AppleScript to import into DEVONthink
-    # We pass the path and group name as arguments to avoid escaping issues
+    # Write AppleScript to a temp file to avoid shell escaping issues
     script = '''
-    on run argv
-        set filePath to item 1 of argv
-        set groupName to item 2 of argv
+on run argv
+    set filePath to item 1 of argv
+    set groupName to item 2 of argv
 
-        tell application "DEVONthink 3"
-            set theDatabase to inbox
+    tell application "DEVONthink 3"
+        set theDatabase to incoming group
 
-            -- Look for existing group
-            set theGroup to missing value
-            try
-                set theGroup to (first record of theDatabase whose name is groupName and type is group)
-            end try
+        -- Look for existing group
+        set theGroup to missing value
+        try
+            set theGroup to (first record of theDatabase whose name is groupName and type is group)
+        end try
 
-            -- Create group if it doesn't exist
-            if theGroup is missing value then
-                set theGroup to create record with {name:groupName, type:group} in theDatabase
-            end if
+        -- Create group if it doesn't exist
+        if theGroup is missing value then
+            set theGroup to create record with {name:groupName, type:group} in theDatabase
+        end if
 
-            -- Import the file (DEVONthink will use the filename as the document name)
-            set importedDoc to import POSIX file filePath to theGroup
-
-            return true
+        -- Import the file using 'import' command
+        tell theGroup
+            set importedRecord to import filePath
         end tell
-    end run
-    '''
+
+        return true
+    end tell
+end run
+'''
+
+    script_path = Path(temp_dir) / "import_script.scpt"
+    script_path.write_text(script, encoding='utf-8')
 
     try:
         result = subprocess.run(
-            ['osascript', '-e', script, str(temp_path), DEVONTHINK_GROUP],
+            ['osascript', str(script_path), str(temp_path), DEVONTHINK_GROUP],
             capture_output=True,
             text=True,
             timeout=30
         )
 
-        # Clean up temp file and directory
+        # Clean up temp files and directory
         temp_path.unlink(missing_ok=True)
+        script_path.unlink(missing_ok=True)
         Path(temp_dir).rmdir()
 
         if result.returncode != 0:
@@ -254,11 +259,13 @@ def import_to_devonthink(name: str, content: str) -> bool:
     except subprocess.TimeoutExpired:
         logging.error("DEVONthink import timed out")
         temp_path.unlink(missing_ok=True)
+        script_path.unlink(missing_ok=True)
         Path(temp_dir).rmdir()
         return False
     except Exception as e:
         logging.error(f"Error importing to DEVONthink: {e}")
         temp_path.unlink(missing_ok=True)
+        script_path.unlink(missing_ok=True)
         Path(temp_dir).rmdir()
         return False
 
