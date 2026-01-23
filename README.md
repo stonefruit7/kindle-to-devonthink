@@ -14,7 +14,7 @@ No subscriptions, no cloud services, no Amazon login required.
 
 - macOS 12+
 - Python 3.8+ (included on modern Macs)
-- DEVONthink 3
+- DEVONthink 3 or 4
 - An older Kindle that mounts as a USB drive (pre-2018 models like Paperwhite 1-3)
 
 ## Installation
