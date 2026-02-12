@@ -75,13 +75,32 @@ echo "Loading LaunchAgent..."
 launchctl unload "$LAUNCH_AGENTS_DIR/$PLIST_NAME" 2>/dev/null || true
 launchctl load "$LAUNCH_AGENTS_DIR/$PLIST_NAME"
 
+echo "Adding 'kindle-sync' shortcut..."
+ALIAS_LINE='alias kindle-sync="python3 ~/.kindle-sync/sync_highlights.py"'
+SHELL_RC="$HOME/.zshrc"
+
+# Use .bashrc if zsh config doesn't exist
+if [[ ! -f "$SHELL_RC" ]]; then
+    SHELL_RC="$HOME/.bashrc"
+fi
+
+# Add alias if not already present
+if ! grep -q "alias kindle-sync=" "$SHELL_RC" 2>/dev/null; then
+    echo "" >> "$SHELL_RC"
+    echo "# Kindle to DEVONthink" >> "$SHELL_RC"
+    echo "$ALIAS_LINE" >> "$SHELL_RC"
+    echo "Added 'kindle-sync' alias to $SHELL_RC"
+else
+    echo "'kindle-sync' alias already exists in $SHELL_RC"
+fi
+
 echo ""
 echo "Done!"
 echo ""
 echo "Now just plug in your Kindle - highlights will import"
 echo "into DEVONthink automatically."
 echo ""
-echo "Manual sync:  python3 $INSTALL_DIR/sync_highlights.py"
+echo "Manual sync:  kindle-sync  (restart Terminal first)"
 echo "View log:     cat ~/.kindle-sync.log"
 echo ""
 echo "Uninstall:"
